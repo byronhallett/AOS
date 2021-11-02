@@ -50,7 +50,7 @@ int main(void)
     ttyout_init();
 
     do {
-        fputs("task:\tHello world, I'm\ttty_test!\n", stdout);
+        fputs("task: Hello world, I'm tty_test!\n", stdout);
         thread_block();
         // sleep(1);    // Implement this as a syscall
     } while (1);

@@ -553,6 +553,11 @@ NORETURN void *main_continued(UNUSED void *arg)
     printf("Network init\n");
     network_init(&cspace, timer_vaddr, ntfn);
 
+    // Initialise libserial for communication via UDP
+    struct serial *my_serial = serial_init();
+    char *data = "My Message\n";
+    serial_send(my_serial, data, 11*8);
+
     /* Initialises the timer */
     printf("Timer init\n");
     start_timer(timer_vaddr);
