@@ -50,7 +50,7 @@ int main(void)
     ttyout_init();
 
     do {
-        fputs("task: Hello world, I'm tty_test!\n", stdout);
+        size_t written = sos_write("I am the payload for a serial write :)\n", 40);
         thread_block();
         // sleep(1);    // Implement this as a syscall
     } while (1);

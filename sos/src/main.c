@@ -69,6 +69,18 @@
  */
 #define SOS_SYSCALL0 0
 
+/*
+SERIAL READ/WRITE PROTOCOL
+TODO: move to external file for read by ttyout.c
+*/
+#define SOS_SYSCALL_SERIAL 2
+#define SOS_SERIAL_CHAR_COUNT 1
+#define SOS_SERIAL_DATA_START 2
+
+
+// Handle for serial connection
+struct serial *sos_serial;
+
 /* The linker will link this symbol to the start address  *
  * of an archive of attached applications.                */
 extern char _cpio_archive[];
@@ -100,10 +112,40 @@ static struct {
 
     ut_t *stack_ut;
     seL4_CPtr stack;
+
+
 } tty_test_process;
 
+void handle_serial_in(UNUSED struct serial *serial, char c) {
+  printf("input: %c\n", c);
+}
 
-void handle_syscall(UNUSED seL4_Word badge, UNUSED int num_args, seL4_CPtr reply)
+void handle_serial_out(int num_args, seL4_CPtr reply) {
+      // num_args contains the number of words in the message
+        seL4_Word message_length = seL4_GetMR(SOS_SERIAL_CHAR_COUNT);
+        seL4_Word data[num_args-SOS_SERIAL_DATA_START];
+        seL4_Word *pData = data;
+
+        for (int i = SOS_SERIAL_DATA_START; i <= num_args; i++)
+        {
+          pData[i-SOS_SERIAL_DATA_START] = seL4_GetMR(i);
+        }
+        // now convert data into a chararray for serial
+        char* cData = (char*) pData;
+
+        printf("num args: %d\n", num_args);
+        printf("LEngth: %lu\n", message_length);
+        // serial_send tells us how many bytes were actually written
+        int written = serial_send(sos_serial, cData, message_length);
+        // int written = serial_send(sos_serial, "I am the payload for a serial write :)", message_length);
+        printf("serial written: %d\n", written);
+        // let the caller know how many bytes were written
+        seL4_MessageInfo_t reply_serial = seL4_MessageInfo_new(0, 0, 0, 1);
+        seL4_SetMR(0, written);
+        seL4_Send(reply, reply_serial);
+}
+
+void handle_syscall(UNUSED seL4_Word badge, int num_args, seL4_CPtr reply)
 {
 
     /* get the first word of the message, which in the SOS protocol is the number
@@ -123,7 +165,10 @@ void handle_syscall(UNUSED seL4_Word badge, UNUSED int num_args, seL4_CPtr reply
         /* in MCS kernel, reply object is meant to be reused rather than freed as the
          * send does not consume the reply object unlike the non-MCS kernel */
         break;
-
+    case SOS_SYSCALL_SERIAL:
+        ZF_LOGE("Handling Serial Output %lu\n", syscall_number);
+        handle_serial_out(num_args, reply);
+        break;
     default:
         ZF_LOGE("Unknown syscall %lu\n", syscall_number);
         /* don't reply to an unknown syscall */
@@ -554,9 +599,9 @@ NORETURN void *main_continued(UNUSED void *arg)
     network_init(&cspace, timer_vaddr, ntfn);
 
     // Initialise libserial for communication via UDP
-    struct serial *my_serial = serial_init();
-    char *data = "My Message\n";
-    serial_send(my_serial, data, 11*8);
+    sos_serial = serial_init();
+    serial_register_handler(sos_serial, handle_serial_in);
+    serial_send(sos_serial, "Welcome to ByOS\n", 16);
 
     /* Initialises the timer */
     printf("Timer init\n");
