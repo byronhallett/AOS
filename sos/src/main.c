@@ -116,6 +116,10 @@ static struct {
 
 } tty_test_process;
 
+void print_time(UNUSED uint32_t id, UNUSED void* data) {
+  printf("TIME AFTER TIMEOUT: %lu\n", get_time());
+}
+
 void handle_serial_in(UNUSED struct serial *serial, char c) {
   printf("input: %c\n", c);
 }
@@ -133,12 +137,9 @@ void handle_serial_out(int num_args, seL4_CPtr reply) {
         // now convert data into a chararray for serial
         char* cData = (char*) pData;
 
-        printf("num args: %d\n", num_args);
-        printf("LEngth: %lu\n", message_length);
         // serial_send tells us how many bytes were actually written
         int written = serial_send(sos_serial, cData, message_length);
-        // int written = serial_send(sos_serial, "I am the payload for a serial write :)", message_length);
-        printf("serial written: %d\n", written);
+
         // let the caller know how many bytes were written
         seL4_MessageInfo_t reply_serial = seL4_MessageInfo_new(0, 0, 0, 1);
         seL4_SetMR(0, written);
@@ -605,9 +606,29 @@ NORETURN void *main_continued(UNUSED void *arg)
 
     /* Initialises the timer */
     printf("Timer init\n");
-    start_timer(timer_vaddr);
+
     /* You will need to register an IRQ handler for the timer here.
      * See "irq.h". */
+
+    /* Used to acknowledge the IRQ has been handled */
+    seL4_CPtr irq_handler_a = cspace_alloc_slot(&cspace);
+    if (irq_handler_a == seL4_CapNull) {
+        ZF_LOGE("Failed to alloc irq handler");
+    }
+
+    /* configure IRQ handlers */
+    seL4_Word irq_a = meson_timeout_irq(MESON_TIMER_A);
+    sos_register_irq_handler(
+      irq_a, true, timer_irq, &irq_a, &irq_handler_a);
+
+    start_timer(timer_vaddr);
+
+    /* some test timeouts */
+    register_timer(10e6, print_time, 0);
+    int id = register_timer(1e6, print_time, 0);
+    remove_timer(id);
+    register_timer(5e6, print_time, 0);
+    // Should only see prints at 5 and 10 seconds
 
     /* Start the user application */
     printf("Start first process\n");
