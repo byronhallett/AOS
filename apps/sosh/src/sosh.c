@@ -48,13 +48,34 @@ static size_t sos_debug_print(const void *vData, size_t count)
 
 size_t sos_write(void *vData, size_t count)
 {
-    // use the content of tty test for this
-    return sos_debug_print(vData, count);
+    if (count == 0) return 0;
+    // treat data as words
+    seL4_Word* wData = (seL4_Word*) vData;
+    // our call ID
+    seL4_SetMR(0, SOS_SYSCALL_SERIAL);
+    // how many 64 bit words needed?
+    int word_count = count / 8 + 1;
+
+    // first word contains number of characters to print
+    seL4_SetMR(SOS_SERIAL_CHAR_COUNT, count);
+
+    // loop over data to set the words
+    for (size_t i = SOS_SERIAL_DATA_START; i <= word_count+SOS_SERIAL_DATA_START; i++)
+    {
+      seL4_SetMR(i, wData[i-SOS_SERIAL_DATA_START]); // data is passed as uint64
+    }
+
+    // info about our call
+    // length is word_count + 1 for char count
+    seL4_MessageInfo_t info = seL4_MessageInfo_new(0, 0, 0, word_count+1);
+    seL4_MessageInfo_t reply_info = seL4_Call(SYSCALL_ENDPOINT_SLOT, info);
+    // MR0 contains the number of characters written
+    return seL4_GetMR(0);
 }
 
 size_t sos_read(void *vData, size_t count)
 {
-    // use the content of tty test
+    //TODO: implement this to use your syscall
     return 0;
 }
 
